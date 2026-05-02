@@ -1,81 +1,104 @@
 import streamlit as st
 import smtplib
+import pandas as pd
 from datetime import datetime
 from email.message import EmailMessage
-import pandas as pd
 
 # ═════════════════ CONFIGURATION ═════════════════
 SENDER_EMAIL = "garryboypepito71@gmail.com"
 SENDER_PASSWORD = "fhyv cimp gync wjmj"
-RECEIVER_EMAILS = ["garryboypepito2004@gmail.com", "ailyn_peps0678@yahoo.com"]
+# ailyn_peps0678@yahoo.com is temporarily removed
+RECEIVER_EMAILS = ["garryboypepito2004@gmail.com"] 
 # ═════════════════════════════════════════════════
 
 st.set_page_config(page_title="Ailyn Construction", layout="centered")
 
-# Initialize Session State for records
 if 'records' not in st.session_state:
     st.session_state.records = []
 if 'budget' not in st.session_state:
     st.session_state.budget = 0.0
 
-# --- STYLED HEADER (Matching image_b29645.png) ---
-st.markdown(f"""
-    <div style="background-color: #1b5e20; padding: 30px; border-radius: 5px; color: white;">
-        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-            <h1 style="margin: 0; font-size: 32px;">AILYN CONSTRUCTION</h1>
-            <h2 style="margin: 0; font-size: 24px; opacity: 0.9;">INVENTORY RECEIPT</h2>
+def send_email_report(records, budget, balance):
+    msg = EmailMessage()
+    msg["Subject"] = f"CONSTRUCTION REPORT - {datetime.now().strftime('%d %b %Y')}"
+    msg["From"] = f"AILYN CONSTRUCTION <{SENDER_EMAIL}>"
+    msg["To"] = ", ".join(RECEIVER_EMAILS)
+
+    rows = ""
+    for r in records:
+        rows += f"""
+        <tr>
+            <td style='padding:8px; border:1px solid #ddd;'>{r['Date']}</td>
+            <td style='padding:8px; border:1px solid #ddd;'>{r['Who']}</td>
+            <td style='padding:8px; border:1px solid #ddd;'>{r['What']}</td>
+            <td style='padding:8px; border:1px solid #ddd; text-align:right;'>PHP {r['Amount']:,.2f}</td>
+        </tr>
+        """
+
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif;">
+        <div style="background-color: #1b5e20; padding: 15px; color: white; text-align: center;">
+            <h2 style="margin: 0;">AILYN CONSTRUCTION: SITE UPDATE</h2>
         </div>
-        <hr style="border: 0.5px solid rgba(255,255,255,0.3); margin: 15px 0;">
-        <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: bold;">
-            <span>OFFICIAL CONSTRUCTION MATERIAL & INVENTORY SYSTEM</span>
-            <span>{datetime.now().strftime('%B %d, %Y | %I:%M %p')}</span>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
+        <p><b>Project:</b> Two-Story Residential Building (Davao City)</p>
+        <p><b>Date:</b> {datetime.now().strftime('%B %d, %Y')}</p>
+        <p><b>Current Balance:</b> <span style="color: #d32f2f;">PHP {balance:,.2f}</span></p>
+        <hr>
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr style="background-color: #f2f2f2;">
+                <th style="padding:8px; border:1px solid #ddd; text-align:left;">Date</th>
+                <th style="padding:8px; border:1px solid #ddd; text-align:left;">Who (Supplier/Worker)</th>
+                <th style="padding:8px; border:1px solid #ddd; text-align:left;">What (Item/Service)</th>
+                <th style="padding:8px; border:1px solid #ddd; text-align:right;">Amount</th>
+            </tr>
+            {rows}
+        </table>
+    </body>
+    </html>
+    """
+    msg.add_alternative(html_body, subtype='html')
 
-# --- DASHBOARD ---
-mat_total = sum(r['Amount'] for r in st.session_state.records if r['Type'] != 'Deduction')
-ded_total = sum(r['Amount'] for r in st.session_state.records if r['Type'] == 'Deduction')
-balance = st.session_state.budget - mat_total - ded_total
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(SENDER_EMAIL, SENDER_PASSWORD)
+            smtp.send_message(msg)
+        st.success("✅ Report successfully sent!")
+    except Exception as e:
+        st.error(f"❌ Email Error: {e}")
 
-col1, col2 = st.columns(2)
-with col1:
-    st.session_state.budget = st.number_input("SET BUDGET (PHP)", value=st.session_state.budget)
-with col2:
-    st.metric("CURRENT BALANCE", f"PHP {balance:,.2f}")
+# --- APP UI ---
+st.markdown('<h1 style="text-align:center; color:#1b5e20;">🏗️ AILYN CONSTRUCTION</h1>', unsafe_allow_html=True)
 
-# --- INPUT TABS ---
-tab1, tab2 = st.tabs(["🏗️ Materials/Expenses", "📉 Deductions"])
+mat_total = sum(r['Amount'] for r in st.session_state.records)
+current_balance = st.session_state.budget - mat_total
 
-with tab1:
-    with st.form("mat_form", clear_on_submit=True):
-        name = st.text_input("Item Name")
-        p = st.number_input("Price", min_value=0.0)
-        q = st.number_input("Quantity", min_value=1)
-        d = st.number_input("Delivery Fee", min_value=0.0)
-        if st.form_submit_button("Add Material"):
+col_b1, col_b2 = st.columns(2)
+with col_b1:
+    st.session_state.budget = st.number_input("Set Total Budget (PHP)", value=st.session_state.budget)
+with col_b2:
+    st.metric("Running Balance", f"PHP {current_balance:,.2f}")
+
+with st.form("entry_form", clear_on_submit=True):
+    c1, c2 = st.columns(2)
+    with c1:
+        who_input = st.text_input("WHO (Person or Store)").upper()
+    with c2:
+        what_input = st.text_input("WHAT (Material or Labor)").upper()
+    amt_input = st.number_input("Amount (PHP)", min_value=0.0)
+    if st.form_submit_button("ADD TO LIST"):
+        if who_input and what_input and amt_input > 0:
             st.session_state.records.append({
                 "Date": datetime.now().strftime("%Y-%m-%d"),
-                "Name": name.upper(), "Price": p, "Qty": q, 
-                "Delivery": d, "Amount": (p*q)+d, "Type": "Material"
+                "Who": who_input, "What": what_input, "Amount": amt_input
             })
+            st.rerun()
 
-with tab2:
-    with st.form("ded_form", clear_on_submit=True):
-        reason = st.text_input("Reason for Deduction")
-        amt = st.number_input("Amount", min_value=0.0)
-        if st.form_submit_button("Add Deduction"):
-            st.session_state.records.append({
-                "Date": datetime.now().strftime("%Y-%m-%d"),
-                "Name": reason.upper(), "Price": amt, "Qty": 1, 
-                "Delivery": 0, "Amount": amt, "Type": "Deduction"
-            })
-
-# --- TABLE VIEW ---
 if st.session_state.records:
-    df = pd.DataFrame(st.session_state.records)
-    st.table(df[["Date", "Name", "Qty", "Amount", "Type"]])
+    st.table(pd.DataFrame(st.session_state.records))
+    if st.button("🚀 SEND FULL REPORT TO GMAIL"):
+        send_email_report(st.session_state.records, st.session_state.budget, current_balance)
 
-    if st.button("🚀 EXPORT & SEND EMAIL"):
-        # Logic to send the HTML email to the recipients
-        st.success(f"Report sent to {', '.join(RECEIVER_EMAILS)}!")
+if st.button("🗑️ Reset All Data"):
+    st.session_state.records = []
+    st.rerun()
